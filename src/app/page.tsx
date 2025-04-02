@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { KeyIcon, ListIcon } from "lucide-react";
+import { KeyIcon, ListIcon, LayersIcon } from "lucide-react";
 
 /**
  * Tool card component for displaying available tools
@@ -64,6 +64,12 @@ export default function Home() {
             description="將文本檔案中的每一行轉換為帶引號的字串陣列格式，適用於程式碼開發。"
             icon={<ListIcon className="w-6 h-6" />}
             href="/tools/string-converter"
+          />
+          <ToolCard
+            title="陣列合併工具"
+            description="合併兩個陣列，支援自訂是否去除重複項目，並提供複製與下載功能。"
+            icon={<LayersIcon className="w-6 h-6" />}
+            href="/tools/array-merger"
           />
           {/* 未來可以在這裡添加更多工具卡片 */}
         </div>
