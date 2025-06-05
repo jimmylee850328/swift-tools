@@ -8,7 +8,7 @@ import Editor from "@monaco-editor/react";
 type DiffMode = "onlyInFirst" | "onlyInSecond" | "both";
 type OutputMode = "auto" | "number" | "string";
 
-export default function ArrayDiff(): JSX.Element {
+export default function ArrayDiff() {
   const [firstArray, setFirstArray] = useState<string>("");
   const [secondArray, setSecondArray] = useState<string>("");
   const [resultArray, setResultArray] = useState<string>("");
