@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { KeyIcon, ListIcon, LayersIcon } from "lucide-react";
+import { KeyIcon, ListIcon, LayersIcon, Diff } from "lucide-react";
 
 /**
  * Tool card component for displaying available tools
@@ -70,6 +70,12 @@ export default function Home() {
             description="合併兩個陣列，支援自訂是否去除重複項目，並提供複製與下載功能。"
             icon={<LayersIcon className="w-6 h-6" />}
             href="/tools/array-merger"
+          />
+          <ToolCard
+            title="陣列差異比較工具"
+            description="比較兩個陣列的差異，找出獨有元素，支援超大數字並提供多種比較模式。"
+            icon={<Diff className="w-6 h-6" />}
+            href="/tools/array-diff"
           />
           {/* 未來可以在這裡添加更多工具卡片 */}
         </div>
