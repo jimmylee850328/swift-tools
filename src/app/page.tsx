@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { KeyIcon, ListIcon, LayersIcon, Diff } from "lucide-react";
+import { KeyIcon, ListIcon, LayersIcon, Diff, LinkIcon } from "lucide-react";
 
 /**
  * Tool card component for displaying available tools
@@ -76,6 +76,12 @@ export default function Home() {
             description="比較兩個陣列的差異，找出獨有元素，支援超大數字並提供多種比較模式。"
             icon={<Diff className="w-6 h-6" />}
             href="/tools/array-diff"
+          />
+          <ToolCard
+            title="URL 參數提取工具"
+            description="從 URL 陣列中提取指定參數的值，支援自訂參數名稱和 trim() 功能。"
+            icon={<LinkIcon className="w-6 h-6" />}
+            href="/tools/url-processor"
           />
           {/* 未來可以在這裡添加更多工具卡片 */}
         </div>
