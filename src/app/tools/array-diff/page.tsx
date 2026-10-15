@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
 import { ArrowLeft, Download, Copy, HelpCircle, RefreshCw } from "lucide-react";
 import Editor from "@monaco-editor/react";
@@ -8,107 +8,128 @@ import Editor from "@monaco-editor/react";
 type DiffMode = "onlyInFirst" | "onlyInSecond" | "both";
 type OutputMode = "auto" | "number" | "string";
 
+// Constants
+const DEFAULT_FILE_NAME = "array_diff.txt";
+const COPY_SUCCESS_DURATION = 2000;
+const NUMBER_REGEX = /^-?\d+(\.\d+)?$/;
+const JSON_NUMBER_PREPROCESS_REGEX = /(\[|,|\s+)(\d+)(\s*[,\]])/g;
+
+const EDITOR_OPTIONS = {
+  minimap: { enabled: false },
+  lineNumbers: "on" as const,
+  fontSize: 14,
+  fontFamily: "monospace",
+  padding: { top: 8 },
+};
+
+const READONLY_EDITOR_OPTIONS = {
+  ...EDITOR_OPTIONS,
+  readOnly: true,
+};
+
 export default function ArrayDiff() {
-  const [firstArray, setFirstArray] = useState<string>("");
-  const [secondArray, setSecondArray] = useState<string>("");
-  const [resultArray, setResultArray] = useState<string>("");
+  const [firstArray, setFirstArray] = useState("");
+  const [secondArray, setSecondArray] = useState("");
+  const [resultArray, setResultArray] = useState("");
   const [diffMode, setDiffMode] = useState<DiffMode>("onlyInFirst");
   const [outputMode, setOutputMode] = useState<OutputMode>("auto");
-  const [error, setError] = useState<string>("");
-  const [fileName, setFileName] = useState<string>("array_diff.txt");
-  const [showHelp, setShowHelp] = useState<boolean>(false);
-  const [copySuccess, setCopySuccess] = useState<boolean>(false);
+  const [error, setError] = useState("");
+  const [fileName, setFileName] = useState(DEFAULT_FILE_NAME);
+  const [showHelp, setShowHelp] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
-  useEffect(() => {
-    handleDiff();
-  }, [firstArray, secondArray, diffMode, outputMode]);
-
-  // Parse input array, preserve string format to handle large numbers
-  const parseInputArray = (input: string): string[] => {
-    if (!input.trim()) return [];
+  /**
+   * Parse input array, preserving string format to handle large numbers without precision loss
+   */
+  const parseInputArray = useCallback((input: string): string[] => {
+    const trimmed = input.trim();
+    if (!trimmed) return [];
 
     try {
-      const trimmedInput = input.trim();
-      const jsonString =
-        trimmedInput.startsWith("[") && trimmedInput.endsWith("]")
-          ? trimmedInput
-          : `[${trimmedInput}]`;
+      const jsonString = trimmed.startsWith("[") && trimmed.endsWith("]")
+        ? trimmed
+        : `[${trimmed}]`;
 
-      // Preprocessing: Convert all numbers to string format to maintain precision
+      // Convert all numbers to string format to maintain precision
       const preprocessedJson = jsonString.replace(
-        /(\[|,|\s+)(\d+)(\s*[,\]])/g,
-        (match, prefix, number, suffix) => `${prefix}"${number}"${suffix}`
+        JSON_NUMBER_PREPROCESS_REGEX,
+        (_, prefix, number, suffix) => `${prefix}"${number}"${suffix}`
       );
 
       const parsedArray = JSON.parse(preprocessedJson);
-      return parsedArray.map((item: unknown) => String(item));
+      return parsedArray.map(String);
     } catch {
-      // Error handling: Split input and clean
+      // Fallback: Split by comma or newline and clean
       return input
         .split(/[,\n]/)
-        .map((item: string) => item.trim())
-        .filter((item: string) => item !== "");
+        .map(item => item.trim())
+        .filter(Boolean);
     }
-  };
+  }, []);
 
-  // Format output result
-  const formatOutput = (items: string[]): string => {
+  /**
+   * Check if all items are numeric (safe for number formatting)
+   */
+  const areAllNumbers = useCallback((items: string[]): boolean => {
+    return items.every(item => {
+      const cleaned = item.replace(/^"|"$/g, "");
+      return NUMBER_REGEX.test(cleaned);
+    });
+  }, []);
+
+  /**
+   * Format output result based on output mode and content type
+   */
+  const formatOutput = useCallback((items: string[]): string => {
     if (items.length === 0) return "[]";
 
-    // Check if all items are in number format
-    const allNumbers = items.every((item: string) => {
-      const cleaned = item.replace(/^"|"$/g, "");
-      return /^-?\d+(\.\d+)?$/.test(cleaned);
-    });
+    const allNumbers = areAllNumbers(items);
+    const shouldUseNumberFormat = outputMode === "number" || (outputMode === "auto" && allNumbers);
 
-    const processedItems = items;
-
-    if (outputMode === "string" || (outputMode === "auto" && !allNumbers)) {
-      // String format
-      return JSON.stringify(processedItems, null, 2);
-    }
-
-    if (outputMode === "number" || (outputMode === "auto" && allNumbers)) {
-      // Number format: Manually construct JSON to ensure large numbers are not truncated
-      const cleanedItems = items.map((item: string) =>
-        item.replace(/^"|"$/g, "")
-      );
-      const jsonLines = cleanedItems.map(
-        (item: string, index: number) =>
-          `  ${item}${index < cleanedItems.length - 1 ? "," : ""}`
+    if (shouldUseNumberFormat) {
+      // Number format: Manually construct JSON to prevent large number truncation
+      const cleanedItems = items.map(item => item.replace(/^"|"$/g, ""));
+      const jsonLines = cleanedItems.map((item, index) =>
+        `  ${item}${index < cleanedItems.length - 1 ? "," : ""}`
       );
       return `[\n${jsonLines.join("\n")}\n]`;
     }
 
-    return JSON.stringify(processedItems, null, 2);
-  };
+    // String format (default)
+    return JSON.stringify(items, null, 2);
+  }, [outputMode, areAllNumbers]);
 
-  const handleDiff = (): void => {
+  /**
+   * Compute array difference based on selected mode
+   */
+  const computeDiff = useCallback((array1: string[], array2: string[], mode: DiffMode): string[] => {
+    const set1 = new Set(array1);
+    const set2 = new Set(array2);
+
+    switch (mode) {
+      case "onlyInFirst":
+        return array1.filter(item => !set2.has(item));
+      case "onlyInSecond":
+        return array2.filter(item => !set1.has(item));
+      case "both":
+        return [
+          ...array1.filter(item => !set2.has(item)),
+          ...array2.filter(item => !set1.has(item)),
+        ];
+    }
+  }, []);
+
+  /**
+   * Main diff handler
+   */
+  const handleDiff = useCallback((): void => {
     try {
       setError("");
       setCopySuccess(false);
 
       const array1 = parseInputArray(firstArray);
       const array2 = parseInputArray(secondArray);
-      const set1 = new Set(array1);
-      const set2 = new Set(array2);
-
-      let diffResult: string[] = [];
-
-      switch (diffMode) {
-        case "onlyInFirst":
-          diffResult = array1.filter((item: string) => !set2.has(item));
-          break;
-        case "onlyInSecond":
-          diffResult = array2.filter((item: string) => !set1.has(item));
-          break;
-        case "both":
-          diffResult = [
-            ...array1.filter((item: string) => !set2.has(item)),
-            ...array2.filter((item: string) => !set1.has(item)),
-          ];
-          break;
-      }
+      const diffResult = computeDiff(array1, array2, diffMode);
 
       setResultArray(formatOutput(diffResult));
     } catch (err) {
@@ -119,29 +140,44 @@ export default function ArrayDiff() {
       );
       setResultArray("");
     }
-  };
+  }, [firstArray, secondArray, diffMode, parseInputArray, computeDiff, formatOutput]);
 
-  const handleDownload = (): void => {
-    if (!resultArray) return;
-    const element = document.createElement("a");
-    const file = new Blob([resultArray], { type: "text/plain;charset=utf-8" });
-    element.href = URL.createObjectURL(file);
-    element.download = fileName;
-    document.body.appendChild(element);
-    element.click();
-    document.body.removeChild(element);
-  };
+  useEffect(() => {
+    handleDiff();
+  }, [handleDiff]);
 
-  const handleCopy = (): void => {
+  /**
+   * Download result as text file
+   */
+  const handleDownload = useCallback((): void => {
     if (!resultArray) return;
+
+    const blob = new Blob([resultArray], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }, [resultArray, fileName]);
+
+  /**
+   * Copy result to clipboard
+   */
+  const handleCopy = useCallback((): void => {
+    if (!resultArray) return;
+
     navigator.clipboard.writeText(resultArray).then(
       () => {
         setCopySuccess(true);
-        setTimeout(() => setCopySuccess(false), 2000);
+        setTimeout(() => setCopySuccess(false), COPY_SUCCESS_DURATION);
       },
       () => setError("Failed to copy to clipboard")
     );
-  };
+  }, [resultArray]);
 
   return (
     <main className="min-h-screen p-8 bg-[#1E1E1E] text-white">
@@ -186,13 +222,7 @@ export default function ArrayDiff() {
                 value={firstArray}
                 onChange={(value) => setFirstArray(value || "")}
                 theme="vs-dark"
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: "on",
-                  fontSize: 14,
-                  fontFamily: "monospace",
-                  padding: { top: 8 },
-                }}
+                options={EDITOR_OPTIONS}
               />
             </div>
           </div>
@@ -206,13 +236,7 @@ export default function ArrayDiff() {
                 value={secondArray}
                 onChange={(value) => setSecondArray(value || "")}
                 theme="vs-dark"
-                options={{
-                  minimap: { enabled: false },
-                  lineNumbers: "on",
-                  fontSize: 14,
-                  fontFamily: "monospace",
-                  padding: { top: 8 },
-                }}
+                options={EDITOR_OPTIONS}
               />
             </div>
           </div>
@@ -284,14 +308,7 @@ export default function ArrayDiff() {
               defaultLanguage="json"
               value={resultArray}
               theme="vs-dark"
-              options={{
-                readOnly: true,
-                minimap: { enabled: false },
-                lineNumbers: "on",
-                fontSize: 14,
-                fontFamily: "monospace",
-                padding: { top: 8 },
-              }}
+              options={READONLY_EDITOR_OPTIONS}
             />
           </div>
           <div className="mt-4">
